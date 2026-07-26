@@ -19,10 +19,9 @@ import {
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY)
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "")
 const model = genAI.getGenerativeModel({
-  model: 'models/gemini-2.5-flash',
-  apiVersion: 'v1beta'
+  model: 'gemini-1.5-flash'
 })
 
 const Documents = () => {
