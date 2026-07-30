@@ -1,4 +1,5 @@
 const DEFAULT_TIMEOUT_MS = 20_000
+const CIVIC_DATA_VERSION = '2026-07-30-crawler-v1'
 
 export class ApiError extends Error {
   constructor(message, status = 500, details = null) {
@@ -61,14 +62,22 @@ export const requestJson = async (path, options = {}) => {
 }
 
 export const getEvents = (zip) =>
-  requestJson(`/api/events?zip=${encodeURIComponent(zip)}`, {
-    timeoutMs: 60_000,
-  })
+  requestJson(
+    `/api/events?zip=${encodeURIComponent(zip)}&source=${CIVIC_DATA_VERSION}`,
+    {
+      timeoutMs: 60_000,
+    },
+  )
 
 export const getOfficials = (address) =>
-  requestJson(`/api/officials?address=${encodeURIComponent(address)}`, {
-    timeoutMs: 60_000,
-  })
+  requestJson(
+    `/api/officials?address=${encodeURIComponent(
+      address,
+    )}&source=${CIVIC_DATA_VERSION}`,
+    {
+      timeoutMs: 60_000,
+    },
+  )
 
 export const summarizeDocument = (document) =>
   requestJson('/api/summarize', {
