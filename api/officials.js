@@ -10,6 +10,7 @@ import {
   normalizeCongressMember,
   normalizeOpenStatesPerson,
 } from './_lib/normalizers.js'
+import { enrichCongressMembers } from './_lib/congressionalData.js'
 
 const findGeographyLayer = (geographies, fragment) => {
   const key = Object.keys(geographies).find((name) => name.includes(fragment))
@@ -73,24 +74,30 @@ const getCongressOfficials = async (location, notices) => {
       return String(Number(member.district)) === targetDistrict
     })
 
-  const details = await Promise.all(
-    members.map(async (member) => {
-      try {
-        const detailUrl = new URL(
-          `https://api.congress.gov/v3/member/${member.bioguideId}`,
-        )
-        detailUrl.searchParams.set('format', 'json')
-        detailUrl.searchParams.set('api_key', apiKey)
-        return await fetchJson(detailUrl)
-      } catch {
-        return {}
-      }
-    }),
-  )
+  const [details, enrichments] = await Promise.all([
+    Promise.all(
+      members.map(async (member) => {
+        try {
+          const detailUrl = new URL(
+            `https://api.congress.gov/v3/member/${member.bioguideId}`,
+          )
+          detailUrl.searchParams.set('format', 'json')
+          detailUrl.searchParams.set('api_key', apiKey)
+          return await fetchJson(detailUrl)
+        } catch {
+          return {}
+        }
+      }),
+    ),
+    enrichCongressMembers(members, apiKey).catch(() =>
+      members.map(() => ({ issueAreas: [], recentVotes: [] })),
+    ),
+  ])
 
-  return members.map((member, index) =>
-    normalizeCongressMember(member, details[index]),
-  )
+  return members.map((member, index) => ({
+    ...normalizeCongressMember(member, details[index]),
+    ...enrichments[index],
+  }))
 }
 
 const getStateOfficials = async (location, notices) => {

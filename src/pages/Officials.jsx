@@ -14,8 +14,28 @@ import { getOfficials } from '../lib/api'
 
 const DEFAULT_ADDRESS = '1 E First St, Reno, NV 89501'
 
+const partyBadgeClass = (party = '') => {
+  if (/democrat/i.test(party)) {
+    return 'border-sky-300/40 bg-sky-400/15 text-sky-100'
+  }
+  if (/republican/i.test(party)) {
+    return 'border-red-300/40 bg-red-400/15 text-red-100'
+  }
+  return 'border-gray-700 bg-gray-950/50 text-gray-300'
+}
+
+const voteBadgeClass = (position = '') =>
+  position === 'Yea'
+    ? 'border-emerald-300/40 bg-emerald-400/15 text-emerald-100'
+    : 'border-rose-300/40 bg-rose-400/15 text-rose-100'
+
+const formatVoteDate = (value) => {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString()
+}
+
 const OfficialCard = ({ official }) => (
-  <article className="flex flex-col justify-between rounded-2xl border border-gray-800/80 bg-gray-900/40 p-5 shadow-md">
+  <article className="flex flex-col rounded-2xl border border-gray-800/80 bg-gray-900/40 p-5 shadow-md">
     <div>
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -25,7 +45,11 @@ const OfficialCard = ({ official }) => (
           </p>
         </div>
         {official.party && (
-          <span className="rounded-full border border-gray-700 bg-gray-950/50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-gray-300">
+          <span
+            className={`rounded-full border px-2 py-1 text-[9px] font-bold uppercase tracking-wide ${partyBadgeClass(
+              official.party,
+            )}`}
+          >
             {official.party}
           </span>
         )}
@@ -36,7 +60,75 @@ const OfficialCard = ({ official }) => (
       )}
     </div>
 
-    <div className="mt-5 space-y-2 border-t border-gray-800 pt-4 text-xs text-gray-400">
+    {official.issueAreas?.length > 0 && (
+      <section className="mt-5 border-t border-gray-800 pt-4">
+        <h4 className="text-xs font-bold text-gray-200">
+          Top sponsored-legislation issue areas
+        </h4>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {official.issueAreas.map((area) => (
+            <span
+              className="rounded-full border border-civic-400/30 bg-civic-400/10 px-2 py-1 text-[10px] font-semibold text-civic-200"
+              key={area.name}
+            >
+              {area.name}
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-gray-500">
+          Based on bills this member sponsored in the current Congress.
+        </p>
+      </section>
+    )}
+
+    {official.recentVotes?.length > 0 && (
+      <section className="mt-5 border-t border-gray-800 pt-4">
+        <h4 className="text-xs font-bold text-gray-200">
+          Most recent legislative votes
+        </h4>
+        <div className="mt-3 space-y-3">
+          {official.recentVotes.map((vote) => (
+            <div
+              className="rounded-xl border border-gray-800 bg-gray-950/30 p-3"
+              key={vote.id || `${vote.billUrl}:${vote.date}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs font-semibold leading-relaxed text-gray-200">
+                  {vote.billName}
+                </p>
+                <span
+                  className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${voteBadgeClass(
+                    vote.position,
+                  )}`}
+                >
+                  {vote.position}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500">
+                {formatVoteDate(vote.date) && (
+                  <time dateTime={vote.date}>
+                    {formatVoteDate(vote.date)}
+                  </time>
+                )}
+                {vote.billUrl && (
+                  <a
+                    className="inline-flex items-center gap-1 text-civic-300 hover:text-white"
+                    href={vote.billUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    View bill
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <div className="mt-auto space-y-2 border-t border-gray-800 pt-4 text-xs text-gray-400">
       {official.email && (
         <a
           className="flex items-center gap-2 hover:text-white"
@@ -66,7 +158,7 @@ const OfficialCard = ({ official }) => (
           Official profile
         </a>
       )}
-      <p className="pt-1 text-[10px] uppercase tracking-wide text-gray-500">
+      <p className="pt-1 text-[10px] leading-relaxed text-gray-500">
         Source: {official.sourceName}
       </p>
     </div>
@@ -84,7 +176,7 @@ const OfficialSection = ({ icon: Icon, title, officials }) => (
         No verified records were returned for this level of government.
       </p>
     ) : (
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {officials.map((official) => (
           <OfficialCard key={official.id} official={official} />
         ))}
@@ -135,8 +227,9 @@ const Officials = () => {
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-gray-300">
           Use a full street address because ZIP codes can cross congressional
-          and state legislative districts. CivIQ displays sourced directory
-          data only—no inferred positions or generated voting records.
+          and state legislative districts. Federal issue areas are derived from
+          Congress.gov sponsored legislation; votes come from official House
+          Clerk and Senate roll-call records. Missing data stays blank.
         </p>
 
         <div className="mt-6 flex max-w-3xl flex-col gap-2 sm:flex-row">

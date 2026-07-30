@@ -6,6 +6,12 @@
   "installCommand": "npm ci",
   "framework": "vite",
   "functions": {
+    "api/events.js": {
+      "maxDuration": 60
+    },
+    "api/officials.js": {
+      "maxDuration": 60
+    },
     "api/summarize.js": {
       "maxDuration": 60
     }

@@ -20,9 +20,13 @@ Every civic record includes its source.
 Current sources:
 
 - U.S. Census Geocoder for address-to-district matching;
-- Congress.gov for current federal members;
+- Congress.gov for current federal members and sponsored-legislation policy
+  areas;
+- official House Clerk and U.S. Senate roll-call records for recent federal
+  votes;
 - OpenStates for state legislators and state legislative events; and
-- compatible Legistar calendars for local meetings.
+- official municipal websites and calendar feeds discovered by a bounded,
+  robots-aware crawler for local meetings.
 
 AI document analysis is explicitly labeled and should be verified against the
 original document.
@@ -51,7 +55,6 @@ migration, but new deployments should use the unprefixed names below.
 | `GEMINI_MODEL` | Optional model override | Defaults to `gemini-3.6-flash` |
 | `OPENSTATES_API_KEY` | State officials and events | OpenStates |
 | `CONGRESS_API_KEY` | Federal representatives | api.data.gov / Congress.gov |
-| `LEGISTAR_CLIENTS` | Extra local calendars | Comma-separated Legistar client names |
 
 Keys are read only by files under `/api`; they are not included in the browser
 bundle. If a key is omitted, the affected feature shows a configuration notice

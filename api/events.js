@@ -5,22 +5,10 @@ import {
   handleError,
   json,
 } from './_lib/http.js'
-import {
-  normalizeLegistarEvent,
-  normalizeOpenStatesEvent,
-} from './_lib/normalizers.js'
+import { crawlMunicipalEvents } from './_lib/eventCrawler.js'
+import { normalizeOpenStatesEvent } from './_lib/normalizers.js'
 
 const ZIP_PATTERN = /^\d{5}$/
-
-const configuredLegistarClients = (city) => {
-  const configured = getEnv('LEGISTAR_CLIENTS')
-    .split(',')
-    .map((client) => client.trim().toLowerCase())
-    .filter((client) => /^[a-z0-9-]+$/.test(client))
-
-  const cityCandidate = city.toLowerCase().replace(/[^a-z0-9]/g, '')
-  return [...new Set([...configured, cityCandidate])].slice(0, 4)
-}
 
 const getLocation = async (zip) => {
   const data = await fetchJson(`https://api.zippopotam.us/us/${zip}`)
@@ -34,6 +22,7 @@ const getLocation = async (zip) => {
   return {
     city: place['place name'],
     state: place['state abbreviation'],
+    stateName: place.state,
     lat: Number(place.latitude),
     lng: Number(place.longitude),
     displayName: `${place['place name']}, ${place['state abbreviation']}`,
@@ -66,35 +55,6 @@ const getOpenStatesEvents = async (location, notices) => {
   }
 }
 
-const getLegistarEvents = async (location, notices) => {
-  const today = new Date().toISOString().slice(0, 10)
-  const clients = configuredLegistarClients(location.city)
-
-  const results = await Promise.allSettled(
-    clients.map(async (client) => {
-      const url = new URL(`https://webapi.legistar.com/v1/${client}/events`)
-      url.searchParams.set(
-        '$filter',
-        `EventDate ge datetime'${today}T00:00:00'`,
-      )
-      url.searchParams.set('$orderby', 'EventDate asc')
-      url.searchParams.set('$top', '50')
-      const events = await fetchJson(url)
-      return events.map((event) => normalizeLegistarEvent(event, client))
-    }),
-  )
-
-  const events = results.flatMap((result) =>
-    result.status === 'fulfilled' ? result.value : [],
-  )
-  if (events.length === 0) {
-    notices.push(
-      'No compatible local Legistar calendar was found. Add known client names with LEGISTAR_CLIENTS for broader local coverage.',
-    )
-  }
-  return events
-}
-
 const deduplicateEvents = (events) => {
   const seen = new Set()
   return events
@@ -125,7 +85,7 @@ export default {
       const notices = []
       const [stateEvents, localEvents] = await Promise.all([
         getOpenStatesEvents(location, notices),
-        getLegistarEvents(location, notices),
+        crawlMunicipalEvents(location, notices),
       ])
 
       return json(

@@ -61,10 +61,14 @@ export const requestJson = async (path, options = {}) => {
 }
 
 export const getEvents = (zip) =>
-  requestJson(`/api/events?zip=${encodeURIComponent(zip)}`)
+  requestJson(`/api/events?zip=${encodeURIComponent(zip)}`, {
+    timeoutMs: 60_000,
+  })
 
 export const getOfficials = (address) =>
-  requestJson(`/api/officials?address=${encodeURIComponent(address)}`)
+  requestJson(`/api/officials?address=${encodeURIComponent(address)}`, {
+    timeoutMs: 60_000,
+  })
 
 export const summarizeDocument = (document) =>
   requestJson('/api/summarize', {

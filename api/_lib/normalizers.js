@@ -37,29 +37,6 @@ export const normalizeOpenStatesEvent = (event) => ({
   retrievedAt: new Date().toISOString(),
 })
 
-export const normalizeLegistarEvent = (event, client) => ({
-  id: `legistar:${client}:${event.EventId}`,
-  title:
-    cleanText(event.EventBodyName) ||
-    cleanText(event.EventComment) ||
-    'Public meeting',
-  description: cleanText(event.EventAgendaStatusName),
-  type: cleanText(event.EventBodyName) || 'Local government meeting',
-  startDate: event.EventDate,
-  endDate: null,
-  location:
-    cleanText(event.EventLocation) ||
-    cleanText(event.EventAddress) ||
-    'See official record',
-  lat: null,
-  lng: null,
-  sourceName: `Legistar · ${client}`,
-  sourceUrl: [event.EventInSiteURL, event.EventAgendaFile, event.EventMinutesFile].find(
-    isHttpUrl,
-  ) || null,
-  retrievedAt: new Date().toISOString(),
-})
-
 export const normalizeCongressMember = (member, details = {}) => {
   const detail = details.member || details
   const district =

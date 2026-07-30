@@ -128,8 +128,9 @@ const Events = () => {
           Verified civic meetings
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-gray-300">
-          Search official state legislative feeds and configured municipal
-          calendars. CivIQ does not generate or guess meeting records.
+          Search official state legislative feeds and municipal calendar pages
+          discovered by CivIQ&apos;s bounded web crawler. CivIQ does not
+          generate or guess meeting records.
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-12">
@@ -261,8 +262,8 @@ const Events = () => {
               <Calendar className="mb-3 h-11 w-11 text-gray-600" />
               <h2 className="font-bold text-gray-200">No sourced meetings found</h2>
               <p className="mt-2 max-w-sm text-sm text-gray-400">
-                This means no configured official feed returned a future meeting.
-                CivIQ will not fill the gap with generated events.
+                This means the official state feed and municipal website crawler
+                returned no future meeting that CivIQ could verify.
               </p>
             </div>
           ) : (
