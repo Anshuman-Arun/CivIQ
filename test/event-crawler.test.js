@@ -89,7 +89,7 @@ test('parses official Revize calendar records and preserves their links', () => 
       id: '42',
       title: 'Neighborhood Advisory Board Meeting',
       start: '2099-08-04T17:30:00-07:00',
-      url: '/government/meetings/42',
+      desc: '%3Ca%20href%3D%22https%3A%2F%2Fagenda.example.gov%2FPortal%2FMeeting%3Fid%3D42%22%3EView%20the%20agenda%3C%2Fa%3E',
       calendar_displays: [3],
     },
   ]
@@ -101,5 +101,9 @@ test('parses official Revize calendar records and preserves their links', () => 
   )
 
   assert.equal(event.type, 'Meetings')
-  assert.equal(event.sourceUrl, 'https://city.gov/government/meetings/42')
+  assert.equal(event.description, 'View the agenda')
+  assert.equal(
+    event.sourceUrl,
+    'https://agenda.example.gov/Portal/Meeting?id=42',
+  )
 })

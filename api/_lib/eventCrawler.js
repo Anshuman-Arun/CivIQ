@@ -11,9 +11,21 @@ const MEETING_PATTERN =
 const DISCOVERY_PATTERN =
   /\b(meeting|calendar|events?|agenda|council|commission|hearing)\b/i
 
+const decodeText = (value) => {
+  if (typeof value !== 'string' || !/%[0-9a-f]{2}/i.test(value)) return value
+  try {
+    return decodeURIComponent(value.replace(/\+/g, ' '))
+  } catch {
+    return value
+  }
+}
+
 const cleanText = (value) => {
   if (typeof value !== 'string') return null
-  const text = load(`<div>${value}</div>`)('div').text().replace(/\s+/g, ' ').trim()
+  const text = load(`<div>${decodeText(value)}</div>`)('div')
+    .text()
+    .replace(/\s+/g, ' ')
+    .trim()
   return text || null
 }
 
@@ -468,6 +480,29 @@ export const parseRevizeEvents = (
         } catch {
           // Keep the calendar page URL.
         }
+      }
+      if (sourceUrl === pageUrl && record.desc) {
+        const description = load(decodeText(String(record.desc)))
+        const recordLink = description('a[href]')
+          .map((_, element) => description(element).attr('href'))
+          .get()
+          .find((href) => {
+            try {
+              const candidate = new URL(href, pageUrl)
+              return (
+                isSafePublicUrl(candidate) &&
+                !/\b(zoom\.us|teams\.microsoft\.com|forms\.)\b/i.test(
+                  candidate.hostname,
+                ) &&
+                /\b(agenda|meeting|calendar|event|portal)\b/i.test(
+                  `${candidate.pathname}${candidate.search}`,
+                )
+              )
+            } catch {
+              return false
+            }
+          })
+        if (recordLink) sourceUrl = new URL(recordLink, pageUrl).href
       }
       return {
         id: eventId(
