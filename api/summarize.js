@@ -138,7 +138,7 @@ export default {
         return json({ error: 'A valid filename is required.' }, 400)
       }
 
-      const model = getEnv('GEMINI_MODEL') || 'gemini-2.5-flash'
+      const model = getEnv('GEMINI_MODEL') || 'gemini-3.6-flash'
       const url = new URL(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       )

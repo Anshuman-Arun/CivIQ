@@ -48,7 +48,7 @@ migration, but new deployments should use the unprefixed names below.
 | Variable | Required for | Where to obtain it |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Document analysis | Google AI Studio |
-| `GEMINI_MODEL` | Optional model override | Defaults to `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Optional model override | Defaults to `gemini-3.6-flash` |
 | `OPENSTATES_API_KEY` | State officials and events | OpenStates |
 | `CONGRESS_API_KEY` | Federal representatives | api.data.gov / Congress.gov |
 | `LEGISTAR_CLIENTS` | Extra local calendars | Comma-separated Legistar client names |
