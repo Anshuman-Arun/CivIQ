@@ -309,7 +309,7 @@ const currentCongressContext = async (apiKey) => {
   return { congressNumber, sessionNumber }
 }
 
-export const enrichCongressMembers = async (members, apiKey) => {
+export const enrichCongressMembers = async (members, apiKey, stateCode) => {
   const context = await currentCongressContext(apiKey)
   const representatives = members.filter(
     (member) => member.district !== undefined && member.district !== null,
@@ -323,6 +323,7 @@ export const enrichCongressMembers = async (members, apiKey) => {
         ...member,
         fullName: givenName ? `${givenName} ${familyName}` : name,
         lastName: givenName ? familyName : name?.split(/\s+/).at(-1),
+        state: stateCode || member.state,
       }
     })
 

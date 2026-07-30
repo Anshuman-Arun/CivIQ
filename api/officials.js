@@ -89,7 +89,7 @@ const getCongressOfficials = async (location, notices) => {
         }
       }),
     ),
-    enrichCongressMembers(members, apiKey).catch(() =>
+    enrichCongressMembers(members, apiKey, location.state).catch(() =>
       members.map(() => ({ issueAreas: [], recentVotes: [] })),
     ),
   ])
