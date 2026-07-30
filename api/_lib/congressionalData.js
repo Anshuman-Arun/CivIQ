@@ -214,11 +214,17 @@ export const parseSenateVoteXml = (xml, member) => {
   $('members > member').each((_, element) => {
     const candidateState = cleanText($(element).find('state').text())
     const candidateLastName = cleanText($(element).find('last_name').text())
-    if (
-      candidateState === member.state &&
+    const exactLastName =
       candidateLastName?.localeCompare(member.lastName, undefined, {
         sensitivity: 'base',
       }) === 0
+    const fullNameMatch = Boolean(
+      candidateLastName &&
+        member.fullName?.toLowerCase().endsWith(candidateLastName.toLowerCase()),
+    )
+    if (
+      candidateState === member.state &&
+      (exactLastName || fullNameMatch)
     ) {
       position = normalizeVotePosition($(element).find('vote_cast').text())
     }
@@ -310,10 +316,15 @@ export const enrichCongressMembers = async (members, apiKey) => {
   )
   const senators = members
     .filter((member) => member.district === undefined || member.district === null)
-    .map((member) => ({
-      ...member,
-      lastName: cleanText(member.name)?.split(',')[0],
-    }))
+    .map((member) => {
+      const name = cleanText(member.name)
+      const [familyName, givenName] = name?.split(',').map((part) => part.trim()) || []
+      return {
+        ...member,
+        fullName: givenName ? `${givenName} ${familyName}` : name,
+        lastName: givenName ? familyName : name?.split(/\s+/).at(-1),
+      }
+    })
 
   const [issueAreaResults, houseResult, senateResult] = await Promise.all([
     Promise.allSettled(

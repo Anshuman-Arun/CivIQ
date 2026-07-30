@@ -96,3 +96,27 @@ test('matches a senator by state and last name in official Senate XML', () => {
     { date: '2026-07-30', position: 'Nay' },
   )
 })
+
+test('matches a multiword Senate surname from a full member name', () => {
+  const xml = `
+    <roll_call_vote>
+      <vote_date>July 30, 2026</vote_date>
+      <members>
+        <member>
+          <last_name>Cortez Masto</last_name>
+          <state>NV</state>
+          <vote_cast>Yea</vote_cast>
+        </member>
+      </members>
+    </roll_call_vote>
+  `
+
+  assert.deepEqual(
+    parseSenateVoteXml(xml, {
+      fullName: 'Catherine Cortez Masto',
+      lastName: 'Masto',
+      state: 'NV',
+    }),
+    { date: '2026-07-30', position: 'Yea' },
+  )
+})
