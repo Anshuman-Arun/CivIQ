@@ -1,388 +1,298 @@
-import React, { useState, useEffect } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { supabase, TABLES } from "../lib/supabase";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
-import mammoth from "mammoth";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import React, { useState } from 'react'
 import {
-  Upload,
-  FileText,
-  Trash2,
-  Eye,
-  Clock,
-  Loader,
+  AlertTriangle,
   BookOpen,
-} from "lucide-react";
+  Calendar,
+  ExternalLink,
+  FileText,
+  Loader,
+  Trash2,
+  Upload,
+} from 'lucide-react'
+import { useGuestSession } from '../contexts/GuestSessionContext'
+import { summarizeDocument } from '../lib/api'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+const MAX_FILE_BYTES = 2 * 1024 * 1024
+const ACCEPTED_EXTENSIONS = ['pdf', 'docx', 'txt', 'md']
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "")
-const model = genAI.getGenerativeModel({
-  model: 'gemini-1.5-flash'
-})
+const makeId = () =>
+  globalThis.crypto?.randomUUID?.() ||
+  `document-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',')[1])
+    reader.onerror = () => reject(new Error('The file could not be read.'))
+    reader.readAsDataURL(file)
+  })
+
+const prepareDocumentPayload = async (file) => {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+
+  if (extension === 'pdf') {
+    return {
+      filename: file.name,
+      mimeType: 'application/pdf',
+      contentBase64: await fileToBase64(file),
+    }
+  }
+
+  if (extension === 'docx') {
+    const { default: mammoth } = await import('mammoth')
+    const result = await mammoth.extractRawText({
+      arrayBuffer: await file.arrayBuffer(),
+    })
+    if (!result.value.trim()) {
+      throw new Error('No readable text was found in this DOCX file.')
+    }
+    return {
+      filename: file.name,
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      text: result.value,
+    }
+  }
+
+  const text = await file.text()
+  if (!text.trim()) throw new Error('The selected file is empty.')
+  return {
+    filename: file.name,
+    mimeType: file.type || 'text/plain',
+    text,
+  }
+}
+
+const AnalysisPanel = ({ analysis }) => (
+  <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <section className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+      <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+        Citizen summary
+      </h4>
+      <p className="mt-3 text-sm leading-relaxed text-emerald-50">
+        {analysis.overview}
+      </p>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-emerald-100">
+        {analysis.keyPoints.map((point) => (
+          <li key={point}>{point}</li>
+        ))}
+      </ul>
+    </section>
+
+    <section className="rounded-xl border border-blue-900/40 bg-blue-950/20 p-4">
+      <h4 className="text-xs font-bold uppercase tracking-wider text-blue-300">
+        Key terms
+      </h4>
+      {analysis.terms.length === 0 ? (
+        <p className="mt-3 text-sm text-blue-100">
+          No specialized terms were identified.
+        </p>
+      ) : (
+        <dl className="mt-3 space-y-3 text-sm">
+          {analysis.terms.map(({ term, definition }) => (
+            <div key={term}>
+              <dt className="font-bold text-blue-100">{term}</dt>
+              <dd className="mt-0.5 text-blue-200">{definition}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+
+    {(analysis.importantDates.length > 0 || analysis.citizenActions.length > 0) && (
+      <section className="rounded-xl border border-purple-900/40 bg-purple-950/20 p-4">
+        <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-300">
+          <Calendar className="h-3.5 w-3.5" />
+          Dates and actions
+        </h4>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-purple-100">
+          {[...analysis.importantDates, ...analysis.citizenActions].map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <section className="rounded-xl border border-amber-900/40 bg-amber-950/20 p-4">
+      <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-300">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Verification notes
+      </h4>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-amber-100">
+        {analysis.limitations.map((limitation) => (
+          <li key={limitation}>{limitation}</li>
+        ))}
+      </ul>
+    </section>
+  </div>
+)
 
 const Documents = () => {
-  const { user } = useAuth()
-  const [documents, setDocuments] = useState([])
-  const [loading, setLoading] = useState(false)
+  const {
+    guest,
+    documents,
+    signInGuest,
+    addDocument,
+    removeDocument,
+  } = useGuestSession()
   const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState(null)
   const [dragActive, setDragActive] = useState(false)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (user) fetchDocuments()
-  }, [user])
-
-  const fetchDocuments = async () => {
-    setLoading(true)
-    try {
-      if (!user?.id) return
-      const { data, error } = await supabase
-        .from('documents')
-        .select(`
-          id, filename, file_size, file_url, created_at,
-          document_summaries(summary_text, jargon_text)
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setDocuments(data || [])
-    } catch (err) {
-      console.error('Error fetching documents:', err)
-      setError('Failed to load documents')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const analyzeDocument = async (text, filename) => {
-    try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-      const hasAPIKey = apiKey && !apiKey.includes('your_gemini_api_key_here')
-
-      if (!hasAPIKey) {
-        console.warn('Gemini API key is not configured. Falling back to structured mock summary.')
-        // Generate realistic mock content based on the filename and context
-        return {
-          summary: `### Document Overview: **${filename}**\n\n* **Key Objective:** This document outlines municipal zoning changes and administrative updates designed to optimize local public service delivery.\n* **Key Decisions:** The planning commission has approved adjustments to residential parking minimums and commercial setbacks in high-density sectors.\n* **Implementation Timeline:** Public hearings begin next month, with the revised ordinances scheduled to take effect on October 1st.\n* **Citizen Action:** Community members are invited to submit public comment forms or request to speak at the upcoming zoning board session.`,
-          jargon: `### Key Terms Decoded\n\n* **Setback:** The minimum distance which a building or other structure must be set back from a street, road, or other boundary.\n* **Zoning Ordinance:** Local government regulations that dictate how property in specific geographic zones can be used.\n* **High-Density Sector:** Designated municipal zones characterized by multi-family residential housing and mixed-use commercial space.`
-        }
-      }
-
-      const truncated = text.slice(0, 8000) // limit tokens for quota
-      const summaryPrompt = `
-Summarize the following government document in clear bullet points.
-Focus on main decisions, policies, and actions citizens should know.
-
-Document: ${filename}
-Content:
-${truncated}
-`
-      const summaryResult = await model.generateContent(summaryPrompt)
-      const summary = summaryResult.response.text()
-
-      const jargonPrompt = `
-List and define 5–10 technical or legal terms from this government document
-that a citizen might not understand, using clear and simple language.
-
-Document: ${filename}
-Content:
-${truncated}
-`
-      const jargonResult = await model.generateContent(jargonPrompt)
-      const jargon = jargonResult.response.text()
-
-      return { summary, jargon }
-    } catch (error) {
-      console.error('AI error:', error)
-      return {
-        summary: 'Summary generation failed temporarily. Please check your API key configuration.',
-        jargon: 'Jargon extraction unavailable.'
-      }
-    }
-  }
-
-  const readFileContent = async (file) => {
-    try {
-      if (file.type === 'application/pdf') {
-        const arrayBuffer = await file.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        let text = ''
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i)
-          const content = await page.getTextContent()
-          text += content.items.map((s) => s.str).join(' ') + '\n'
-        }
-        return text
-      }
-
-      if (
-        file.type ===
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.type === 'application/msword'
-      ) {
-        const arrayBuffer = await file.arrayBuffer()
-        const result = await mammoth.extractRawText({ arrayBuffer })
-        return result.value
-      }
-
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = (e) => resolve(e.target.result)
-        reader.onerror = reject
-        reader.readAsText(file)
-      })
-    } catch (err) {
-      console.error('Error reading file content:', err)
-      return 'Unable to extract readable text from this document.'
-    }
-  }
-
-  const handleFileUpload = async (files) => {
-    if (!user) {
-      setError('Please sign in to upload documents')
+  const analyzeFile = async (file) => {
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    if (!ACCEPTED_EXTENSIONS.includes(extension)) {
+      setError('Choose a PDF, DOCX, TXT, or Markdown file.')
       return
     }
-
-    const file = files[0]
-    if (!file) return
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError('File must be under 10MB')
+    if (file.size > MAX_FILE_BYTES) {
+      setError('Files must be 2 MB or smaller for this stateless deployment.')
       return
     }
 
     setUploading(true)
-    setError(null)
+    setError('')
 
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${user.id}/${Date.now()}.${ext}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(path, file)
-      if (uploadError) throw uploadError
-
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(path)
-
-      const { data: doc, error: docErr } = await supabase
-        .from('documents')
-        .insert({
-          user_id: user.id,
-          filename: file.name,
-          file_path: path,
-          file_url: urlData.publicUrl,
-          file_size: file.size,
-          file_type: file.type
-        })
-        .select()
-        .single()
-      if (docErr) throw docErr
-
-      const text = await readFileContent(file)
-      const { summary, jargon } = await analyzeDocument(text, file.name)
-
-      const { error: sumErr } = await supabase
-        .from('document_summaries')
-        .insert({
-          document_id: doc.id,
-          summary_text: summary,
-          jargon_text: jargon,
-          model_used: 'gemini-2.5-flash'
-        })
-      if (sumErr) console.error('Error saving summary:', sumErr)
-
-      fetchDocuments()
-    } catch (e) {
-      console.error('Upload failed:', e)
-      setError('Failed to upload document.')
+      const payload = await prepareDocumentPayload(file)
+      const response = await summarizeDocument(payload)
+      addDocument({
+        id: makeId(),
+        filename: file.name,
+        fileSize: file.size,
+        createdAt: new Date().toISOString(),
+        objectUrl: URL.createObjectURL(file),
+        analysis: response.analysis,
+        model: response.model,
+      })
+    } catch (analysisError) {
+      setError(analysisError.message)
     } finally {
       setUploading(false)
     }
   }
 
-  const handleDrag = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
-    }
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const handleDrop = (event) => {
+    event.preventDefault()
     setDragActive(false)
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files)
-    }
+    if (event.dataTransfer.files?.[0]) analyzeFile(event.dataTransfer.files[0])
   }
 
-  const deleteDocument = async (id) => {
-    if (!confirm('Delete this document?')) return
-    try {
-      const doc = documents.find(d => d.id === id)
-      if (doc?.file_path) {
-        await supabase.storage.from('documents').remove([doc.file_path])
-      }
-      await supabase.from('documents').delete().eq('id', id)
-      fetchDocuments()
-    } catch (e) {
-      console.error('Delete failed:', e)
-    }
+  if (!guest) {
+    return (
+      <div className="mx-auto max-w-lg rounded-2xl border border-gray-800 bg-gray-900/40 p-10 text-center">
+        <FileText className="mx-auto mb-4 h-14 w-14 text-gray-500" />
+        <h1 className="text-2xl font-extrabold text-gray-100">
+          Start a guest session
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-gray-400">
+          Documents and summaries remain only in this tab&apos;s memory. They
+          are not uploaded to a CivIQ database or retained after the session.
+        </p>
+        <button className="btn-primary mt-6" onClick={signInGuest} type="button">
+          Sign In as Guest
+        </button>
+      </div>
+    )
   }
-
-  const formatDate = (d) => new Date(d).toLocaleString()
-  const formatSize = (b) => (b / 1024 / 1024).toFixed(2) + ' MB'
-
-  if (!user) return (
-    <div className="text-center py-20 bg-gray-900/30 border border-gray-800/60 rounded-2xl backdrop-blur-md max-w-lg mx-auto">
-      <FileText className="h-16 w-16 text-gray-500 mx-auto mb-4" />
-      <h2 className="text-2xl font-extrabold text-gray-100 mb-2">Sign in to Upload Documents</h2>
-      <p className="text-gray-400 text-sm max-w-xs mx-auto">
-        Please sign in with your account to access AI-powered document summarization and storage features.
-      </p>
-    </div>
-  )
 
   return (
     <div className="space-y-6">
-      {/* Upload Dropzone */}
-      <div 
-        className={`relative bg-gray-900/40 p-10 rounded-2xl border-2 border-dashed transition-all duration-300 text-center backdrop-blur-md overflow-hidden group ${
-          dragActive 
-            ? 'border-civic-400 bg-civic-950/20 scale-[1.01]' 
-            : 'border-gray-800/80 hover:border-gray-700/80'
+      <section
+        className={`relative rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${
+          dragActive
+            ? 'border-civic-400 bg-civic-950/20'
+            : 'border-gray-800 bg-gray-900/40'
         }`}
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
+        onDragEnter={(event) => {
+          event.preventDefault()
+          setDragActive(true)
+        }}
+        onDragLeave={() => setDragActive(false)}
+        onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
-        {/* Glowing sweep scanner animation when processing */}
-        {uploading && (
-          <div className="absolute left-0 w-full h-[4px] bg-gradient-to-r from-transparent via-civic-400 to-transparent animate-[scan_2s_ease-in-out_infinite] shadow-[0_0_12px_rgba(56,189,248,0.8)] z-20"></div>
-        )}
-        
-        <label className="cursor-pointer flex flex-col items-center justify-center space-y-3">
-          <Upload className={`h-12 w-12 transition-all duration-300 ${uploading ? 'animate-bounce text-civic-400' : 'text-gray-500 group-hover:scale-105 group-hover:text-civic-400'}`} />
-          <div>
-            <span className="text-gray-200 font-bold text-sm block">
-              Drag & drop your file here, or <span className="text-civic-400 underline hover:text-civic-300">browse</span>
-            </span>
-            <span className="text-gray-400 text-xs mt-1 block">
-              Supports PDF, DOCX, TXT (Max 10MB)
-            </span>
-          </div>
+        <Upload className="mx-auto h-11 w-11 text-civic-400" />
+        <h1 className="mt-4 text-xl font-extrabold text-gray-100">
+          Analyze a public document
+        </h1>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-gray-400">
+          PDF files are sent directly to the configured Gemini API for
+          analysis. DOCX and text files are converted to plain text first.
+          CivIQ does not retain the file or summary after this guest session.
+        </p>
+        <label className="btn-primary mt-5 inline-flex cursor-pointer items-center gap-2">
+          <Upload className="h-4 w-4" />
+          Choose file
           <input
-            type="file"
-            accept=".pdf,.docx,.doc,.txt"
-            onChange={(e) => handleFileUpload(e.target.files)}
+            accept=".pdf,.docx,.txt,.md"
+            className="sr-only"
             disabled={uploading}
-            className="hidden"
+            onChange={(event) => event.target.files?.[0] && analyzeFile(event.target.files[0])}
+            type="file"
           />
         </label>
+        <p className="mt-3 text-xs text-gray-500">PDF, DOCX, TXT, or MD · 2 MB maximum</p>
 
         {uploading && (
-          <div className="mt-4 flex items-center justify-center gap-2 text-civic-400 text-xs font-bold animate-pulse">
-            <Loader className="animate-spin h-3.5 w-3.5" />
-            Analyzing document structure & extracting key civic details...
+          <div className="mt-5 flex items-center justify-center gap-2 text-sm text-civic-300" role="status">
+            <Loader className="h-4 w-4 animate-spin" />
+            Analyzing the document…
           </div>
         )}
-        {error && <p className="text-red-400 mt-4 text-xs font-semibold">{error}</p>}
-      </div>
+        {error && (
+          <p className="mt-5 text-sm text-red-300" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
 
-      {/* Documents List */}
-      {loading ? (
-        <div className="text-center py-12">
-          <Loader className="animate-spin h-8 w-8 text-civic-400 mx-auto" />
-          <p className="text-gray-400 text-sm mt-3">Loading documents...</p>
-        </div>
-      ) : documents.length === 0 ? (
-        <div className="text-center py-12 bg-gray-900/10 border border-gray-800/40 rounded-2xl backdrop-blur-md">
-          <BookOpen className="h-10 w-10 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">No documents uploaded yet. Drag a file above to begin.</p>
+      {documents.length === 0 ? (
+        <div className="rounded-2xl border border-gray-800/50 bg-gray-900/20 py-12 text-center">
+          <BookOpen className="mx-auto h-10 w-10 text-gray-600" />
+          <p className="mt-3 text-sm text-gray-400">
+            No documents have been analyzed in this session.
+          </p>
         </div>
       ) : (
         <div className="space-y-6">
-          {documents.map((doc) => (
-            <div key={doc.id} className="bg-gray-900/40 p-6 rounded-2xl border border-gray-800/80 backdrop-blur-md shadow-md hover:border-gray-800 transition-colors">
-              <div className="flex justify-between items-start gap-4">
-                <div className="flex gap-3">
-                  <div className="bg-civic-950/40 border border-civic-900/30 p-2.5 rounded-xl text-civic-400 h-fit">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-gray-100">{doc.filename}</h3>
-                    <p className="text-gray-400 text-xs mt-1">
-                      {formatSize(doc.file_size)} • {formatDate(doc.created_at)}
-                    </p>
-                  </div>
+          {documents.map((document) => (
+            <article
+              className="rounded-2xl border border-gray-800 bg-gray-900/40 p-6"
+              key={document.id}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="truncate font-bold text-gray-100">
+                    {document.filename}
+                  </h2>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {(document.fileSize / 1024 / 1024).toFixed(2)} MB ·{' '}
+                    {new Date(document.createdAt).toLocaleString()} · {document.model}
+                  </p>
                 </div>
-                <div className="flex space-x-2">
-                  <a 
-                    href={doc.file_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="p-2 text-gray-400 hover:text-civic-400 hover:bg-gray-800/50 rounded-full transition-all"
-                    title="View Original"
+                <div className="flex gap-1">
+                  <a
+                    aria-label={`Open ${document.filename}`}
+                    className="rounded-full p-2 text-gray-400 hover:bg-gray-800 hover:text-civic-300"
+                    href={document.objectUrl}
+                    rel="noreferrer"
+                    target="_blank"
                   >
-                    <Eye className="h-4 w-4" />
+                    <ExternalLink className="h-4 w-4" />
                   </a>
-                  <button 
-                    onClick={() => deleteDocument(doc.id)}
-                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-850/50 rounded-full transition-all"
-                    title="Delete Document"
+                  <button
+                    aria-label={`Remove ${document.filename}`}
+                    className="rounded-full p-2 text-gray-400 hover:bg-red-950/40 hover:text-red-300"
+                    onClick={() => removeDocument(document.id)}
+                    type="button"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-
-              {doc.document_summaries?.[0] ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
-                  {/* AI Summary Card */}
-                  <div className="bg-green-950/20 border border-green-900/30 rounded-xl p-4">
-                    <h4 className="text-green-300 font-bold text-xs tracking-wider uppercase mb-3 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-                      AI Summary
-                    </h4>
-                    <div className="prose prose-invert max-w-none text-green-100 text-sm leading-relaxed">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {doc.document_summaries[0].summary_text || ""}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-
-                  {/* Key Jargon Card */}
-                  <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4">
-                    <h4 className="text-blue-300 font-bold text-xs tracking-wider uppercase mb-3 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                      Key Terms Decoded
-                    </h4>
-                    <div className="prose prose-invert max-w-none text-blue-100 text-sm leading-relaxed">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {doc.document_summaries[0].jargon_text || ""}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-yellow-950/20 border border-yellow-900/30 p-3 mt-4 rounded-xl text-yellow-300 text-xs font-bold animate-pulse flex items-center gap-2">
-                  <Loader className="animate-spin h-3.5 w-3.5" />
-                  Summarizing document...
-                </div>
-              )}
-            </div>
+              <AnalysisPanel analysis={document.analysis} />
+            </article>
           ))}
         </div>
       )}

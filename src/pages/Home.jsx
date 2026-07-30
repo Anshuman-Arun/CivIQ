@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useGuestSession } from '../contexts/GuestSessionContext'
 import { 
   Calendar, 
   FileText, 
@@ -139,7 +139,7 @@ const CivIQHubVisual = () => {
 
 
 const Home = () => {
-  const { user } = useAuth()
+  const { guest } = useGuestSession()
 
   const features = [
     {
@@ -159,8 +159,8 @@ const Home = () => {
       hoverBorder: 'hover:border-green-500/50 hover:shadow-[0_0_20px_rgba(34,197,94,0.15)]'
     },
     {
-      name: 'Local Officials',
-      description: 'Find your representatives, learn about their positions, and see their recent legislative activity.',
+      name: 'Elected Officials',
+      description: 'Find your current federal and state representatives, districts, and official contact information.',
       icon: Users,
       href: '/officials',
       color: 'bg-purple-600/10 text-purple-400 border border-purple-500/20',
@@ -207,10 +207,10 @@ const Home = () => {
           <p className="max-w-2xl text-xl text-gray-300 leading-relaxed">
             Stay informed about local government, understand public policies, and connect with your representatives. CivIQ makes civic participation simple, interactive, and transparent.
           </p>
-          {!user && (
+          {!guest && (
             <div className="p-4 rounded-2xl bg-gray-900/50 border border-gray-800/60 backdrop-blur-md inline-block">
               <p className="text-sm text-gray-400">
-                Sign in to save events, track bills, and customize your CivIQ dashboard.
+                Start a temporary guest session to save events and document summaries while this tab is open.
               </p>
             </div>
           )}
